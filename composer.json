@@ -1,0 +1,53 @@
+{
+  "name": "roshify/version-vault",
+  "description": "A clean, configurable, relation-aware model versioning package for Laravel. Tracks efficient diffs (plus periodic snapshots), records changed paths and metadata, and lets you reconstruct, compare, and rollback any Eloquent model with its relations and pivot data.",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Roshan Poojary",
+      "email": "poojariroshan4@gmail.com"
+    }
+  ],
+  "require": {
+    "php": "^8.1|^8.2|^8.3",
+    "illuminate/support": "^9.0|^10.0|^11.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Roshify\\VersionVault\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Roshify\\VersionVault\\Tests\\": "tests/"
+    }
+  },
+  "require-dev": {
+    "orchestra/testbench": "^9.15",
+    "pestphp/pest": "^4.1",
+    "pestphp/pest-plugin": "^4.0",
+    "phpstan/phpstan": "^2.1",
+    "squizlabs/php_codesniffer": "^4.0"
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Roshify\\VersionVault\\VersionVaultServiceProvider"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "pest",
+    "test:watch": "pest --watch",
+    "test:unit": "pest --testsuite=Unit",
+    "test:feature": "pest --testsuite=Feature",
+    "test:coverage": "pest --coverage --min=0",
+    "clean": "rm -rf vendor composer.lock && composer install"
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  }
+}
