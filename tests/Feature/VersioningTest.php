@@ -8,7 +8,7 @@ it('has versions table from package migration', function () {
 
 it('can create an article and the HasVersioning trait is available', function () {
     // create articles table
-    /** @var \Roshify\VersionVault\Tests\TestCase $this */
+    /** @var \SthiraLabs\VersionVault\Tests\TestCase $this */
     $this->createTable('articles', function (\Illuminate\Database\Schema\Blueprint $table) {
         $table->id();
         $table->string('title')->nullable();
@@ -16,12 +16,12 @@ it('can create an article and the HasVersioning trait is available', function ()
     });
 
     // register model class
-    /** @var \Roshify\VersionVault\Tests\TestCase $this */
+    /** @var \SthiraLabs\VersionVault\Tests\TestCase $this */
     $articleClass = $this->registerTestModel('Article', [
         'table' => 'articles',
         'fillable' => ['title', 'body'],
         'timestamps' => false,
-        'useTrait' => \Roshify\VersionVault\Traits\HasVersioning::class,
+        'useTrait' => \SthiraLabs\VersionVault\Traits\HasVersioning::class,
     ]);
 
     // create record

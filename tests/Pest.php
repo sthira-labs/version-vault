@@ -1,10 +1,15 @@
 <?php
 
 /**
- * @mixin \Roshify\VersionVault\Tests\TestCase
+ * @mixin \SthiraLabs\VersionVault\Tests\TestCase
  */
 
-use Roshify\VersionVault\Tests\TestCase;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use SthiraLabs\VersionVault\Services\ChangeDetector;
+use SthiraLabs\VersionVault\Services\ConfigNormalizer;
+use SthiraLabs\VersionVault\Services\SnapshotBuilder;
+use SthiraLabs\VersionVault\Tests\TestCase;
 
 uses(TestCase::class)->in('Feature', 'Unit');
 
@@ -19,9 +24,9 @@ uses(TestCase::class)->in('Feature', 'Unit');
 |
 */
 // /**
-//  * @mixin \Roshify\VersionVault\Tests\TestCase
+//  * @mixin \SthiraLabs\VersionVault\Tests\TestCase
 //  */
-// pest()->extend(\Roshify\VersionVault\Tests\TestCase::class)
+// pest()->extend(\SthiraLabs\VersionVault\Tests\TestCase::class)
 //  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
 //     ->in('Feature', 'Unit');
 
@@ -54,4 +59,41 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function ensureVersionsTable(): void
+{
+    $table = config('version-vault.table_name', 'version_vault_versions');
+
+    if (Schema::hasTable($table)) {
+        return;
+    }
+
+    Schema::create($table, function (Blueprint $t) {
+        $t->id();
+        $t->string('versionable_type');
+        $t->unsignedBigInteger('versionable_id');
+        $t->unsignedBigInteger('version');
+        $t->json('diff')->nullable();
+        $t->json('snapshot')->nullable();
+        $t->json('changed_paths')->nullable();
+        $t->string('action')->nullable();
+        $t->json('meta')->nullable();
+        $t->timestamp('created_at')->nullable();
+    });
+}
+
+function changeDetector(): ChangeDetector
+{
+    return new ChangeDetector();
+}
+
+function changeDetectorProxy(): ChangeDetectorTestProxy
+{
+    return new ChangeDetectorTestProxy();
+}
+
+function snapshotBuilder(): SnapshotBuilder
+{
+    return new SnapshotBuilder(new ConfigNormalizer());
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace Roshify\VersionVault\Models;
+namespace SthiraLabs\VersionVault\Models;
 
 use Illuminate\Database\Eloquent\Model;
 

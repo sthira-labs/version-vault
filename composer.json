@@ -1,5 +1,5 @@
 {
-  "name": "roshify/version-vault",
+  "name": "sthira-labs/version-vault",
   "description": "A clean, configurable, relation-aware model versioning package for Laravel. Tracks efficient diffs (plus periodic snapshots), records changed paths and metadata, and lets you reconstruct, compare, and rollback any Eloquent model with its relations and pivot data.",
   "type": "library",
   "license": "MIT",
@@ -11,16 +11,16 @@
   ],
   "require": {
     "php": "^8.1|^8.2|^8.3",
-    "illuminate/support": "^9.0|^10.0|^11.0"
+    "illuminate/support": "^9.0|^10.0|^11.0|^12.0"
   },
   "autoload": {
     "psr-4": {
-      "Roshify\\VersionVault\\": "src/"
+      "SthiraLabs\\VersionVault\\": "src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "Roshify\\VersionVault\\Tests\\": "tests/"
+      "SthiraLabs\\VersionVault\\Tests\\": "tests/"
     }
   },
   "require-dev": {
@@ -33,7 +33,7 @@
   "extra": {
     "laravel": {
       "providers": [
-        "Roshify\\VersionVault\\VersionVaultServiceProvider"
+        "SthiraLabs\\VersionVault\\VersionVaultServiceProvider"
       ]
     }
   },

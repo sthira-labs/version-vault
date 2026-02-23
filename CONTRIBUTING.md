@@ -1,4 +1,4 @@
-# Contributing to roshify/version-vault
+# Contributing to sthira-labs/version-vault
 
 Thanks for wanting to contribute! This document explains the process we prefer contributors to follow.
 
@@ -8,7 +8,7 @@ Please follow a standard professional code of conduct — be respectful and cons
 ## How to contribute
 
 ### 1. Fork & branch
-- Fork the repo (or create a branch on `roshify/version-vault` with permission).
+- Fork the repo (or create a branch on `sthira-labs/version-vault` with permission).
 - Branch naming: `feature/<name>`, `fix/<short-desc>`, `chore/<desc>`.
 
 ### 2. Commit style

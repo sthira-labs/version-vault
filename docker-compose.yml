@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   workspace:
-    image: ghcr.io/roshify/php-dev:8.1 # you can replace with official php images or your own
+    image: ghcr.io/sthira-labs/php-dev:8.1 # you can replace with official php images or your own
     volumes:
       - ./:/work
     working_dir: /work

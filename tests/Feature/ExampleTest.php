@@ -2,7 +2,7 @@
 
 it('loads the package provider', function () {
     $this->assertTrue(app()->providerIsLoaded(
-        \Roshify\VersionVault\VersionVaultServiceProvider::class
+        \SthiraLabs\VersionVault\VersionVaultServiceProvider::class
     ));
 });
 

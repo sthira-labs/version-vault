@@ -23,7 +23,7 @@ return new class extends Migration
             $table->json('meta')->nullable();
             $table->timestamp('created_at')->useCurrent();
 
-            $table->index(['versionable_type','versionable_id','version']);
+            $table->index(['versionable_type','versionable_id','version'], 'version_vault_versions_versionable_index');
         });
     }
 

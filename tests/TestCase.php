@@ -1,12 +1,13 @@
 <?php
 
-namespace Roshify\VersionVault\Tests;
+namespace SthiraLabs\VersionVault\Tests;
 
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
-use Roshify\VersionVault\VersionVaultServiceProvider;
+use SthiraLabs\VersionVault\VersionVaultServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
+use Monolog\Handler\StreamHandler;
 
 /**
  * @mixin Orchestra\Testbench\TestCase
@@ -50,6 +51,15 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('version-vault.snapshot_interval', 10);
         $app['config']->set('version-vault.table_name', 'version_vault_versions');
         $app['config']->set('version-vault.store_empty', false);
+
+        $app['config']->set('logging.channels.stderr', [
+            'driver'  => 'monolog',
+            'handler' => StreamHandler::class,
+            'with'    => ['stream' => 'php://stderr'],
+            'level'   => 'debug',
+        ]);
+
+        $app['config']->set('logging.default', 'stderr');
     }
 
     /**
@@ -102,6 +112,7 @@ abstract class TestCase extends OrchestraTestCase
         }
     }
 
+
     /**
      * Register an inline model class in the test namespace using the given classname.
      *
@@ -109,7 +120,7 @@ abstract class TestCase extends OrchestraTestCase
      * $modelClass = $this->registerTestModel('Article', [
      *     'table' => 'articles',
      *     'fillable' => ['title', 'body'],
-     *     'useTrait' => \Roshify\VersionVault\Traits\HasVersioning::class,
+     *     'useTrait' => \SthiraLabs\VersionVault\Traits\HasVersioning::class,
      * ]);
      *
      * Returns full class FQN of the created model.
@@ -124,7 +135,7 @@ abstract class TestCase extends OrchestraTestCase
      */
     protected function registerTestModel(string $shortClass, array $options = []): string
     {
-        $namespace = 'Roshify\\VersionVault\\Tests\\Fixtures';
+        $namespace = 'SthiraLabs\\VersionVault\\Tests\\Fixtures';
         $class = $shortClass;
         $fqcn = "{$namespace}\\{$class}";
 
