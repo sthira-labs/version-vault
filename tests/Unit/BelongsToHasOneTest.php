@@ -88,7 +88,10 @@ it('records, reconstructs, and rolls back belongsTo + hasOne changes', function 
     expect($v2)->toBeInstanceOf(Version::class);
     expect($v2->changed_paths)->toContain('status_id', 'status.name', 'profile.phone');
 
-    $r1 = $user->fresh()->reconstructVersion(1);
+    $r1 = $user->fresh()->reconstructVersion(1, [
+        'hydrate_loaded_relations_only' => false,
+        'attach_unloaded_relations' => true,
+    ]);
     expect($r1->status->name)->toBe('Open');
     expect($r1->profile->phone)->toBe('111');
 

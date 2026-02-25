@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace SthiraLabs\VersionVault\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -176,10 +178,13 @@ class VersionManager
 
         $state = $this->versionResolver->applyDiffsToSnapshot($baseSnapshot, $diffs);
 
-        $hydrateOptions = array_merge([
-            'hydrate_loaded_relations_only' => false,
-            'attach_unloaded_relations' => true,
-        ], $options);
+        $hydrateOptions = array_merge(
+            config('version-vault.reconstruct', [
+                'hydrate_loaded_relations_only' => false,
+                'attach_unloaded_relations' => true,
+            ]),
+            $options
+        );
 
         $hydrated = $this->versionResolver->hydrateModelFromSnapshot(
             $model,
@@ -245,10 +250,14 @@ class VersionManager
 
             $state = $this->reconstructCanonicalState($model, $version);
 
-            $hydrateOptions = array_merge([
-                'hydrate_loaded_relations_only' => false,
-                'attach_unloaded_relations' => true,
-            ], $options, ['force_replace_relation' => true]);
+            $hydrateOptions = array_merge(
+                config('version-vault.reconstruct', [
+                    'hydrate_loaded_relations_only' => false,
+                    'attach_unloaded_relations' => true,
+                ]),
+                $options,
+                ['force_replace_relation' => true]
+            );
 
             $hydrated = $this->versionResolver->hydrateModelFromSnapshot(
                 $model,
@@ -385,7 +394,7 @@ class VersionManager
 
         return DB::transaction(function () use ($model, $diff, $changedPaths, $snapshot, $action, $meta) {
             $version = new Version();
-            $version->versionable_type = $model::class;
+            $version->versionable_type = Relation::getMorphAlias($model::class);
             $version->versionable_id = $model->getKey();
             $version->version = ((int)$model->versions()->max('version')) + 1;
             $version->diff = $diff;
@@ -393,6 +402,7 @@ class VersionManager
             $version->changed_paths = $changedPaths;
             $version->action = $action;
             $version->meta = $meta;
+            $version->created_by = Auth::id();
 
             $version->save();
 

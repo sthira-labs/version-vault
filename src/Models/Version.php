@@ -3,6 +3,8 @@
 namespace SthiraLabs\VersionVault\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Foundation\Auth\User as FoundationUser;
 
 class Version extends Model
 {
@@ -20,5 +22,14 @@ class Version extends Model
     {
         parent::__construct($attributes);
         $this->table = config('version-vault.table_name', 'version_vault_versions');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        $model = config('version-vault.user_model')
+            ?? config('auth.providers.users.model')
+            ?? FoundationUser::class;
+
+        return $this->belongsTo($model, 'created_by');
     }
 }

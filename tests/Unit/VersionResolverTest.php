@@ -263,6 +263,29 @@ describe('VersionResolver', function () {
             ->and($hydrated->tags->first()->pivot->order)->toBe(1);
     });
 
+    it('preserves template attributes and loaded relations not present in the snapshot', function () use ($hydrationSnapshot) {
+        $model = new MockModel(['id' => 10, 'title' => 'Old Title', 'untracked' => 'keep_me']);
+        $model->exists = true;
+
+        $profile = new MockModel(['id' => 77, 'bio' => 'Keep Profile']);
+        $profile->exists = true;
+        $model->setRelation('profile', $profile);
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $hydrationSnapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'preserve_missing_attributes' => true,
+        ]);
+
+        // Snapshot values override, but missing attributes are preserved
+        expect($hydrated->title)->toBe('Hydration Test')
+            ->and($hydrated->untracked)->toBe('keep_me');
+
+        // Relation not present in snapshot remains intact
+        expect($hydrated->relationLoaded('profile'))->toBeTrue()
+            ->and($hydrated->profile)->toBe($profile)
+            ->and($hydrated->profile->bio)->toBe('Keep Profile');
+    });
+
     it('updates single relation in-place (non-destructive)', function () use ($hydrationSnapshot) {
         $model = new MockModel();
         

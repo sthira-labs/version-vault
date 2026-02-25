@@ -5,6 +5,7 @@ namespace SthiraLabs\VersionVault\Services;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 
 /**
@@ -97,10 +98,8 @@ class SnapshotBuilder
     protected function extractMeta(Model $model): array
     {
         return [
-            'class' => get_class($model),
-            'alias' => $model->getMorphClass(),
+            'alias' => Relation::getMorphAlias($model::class),
             'table' => $model->getTable(),
-            'connection' => $model->getConnectionName(),
             'primary_key' => $model->getKeyName(),
             'id' => $model->getKey(),
         ];

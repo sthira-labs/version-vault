@@ -21,6 +21,7 @@ return new class extends Migration
             $table->json('changed_paths')->nullable();
             $table->string('action',64)->nullable();
             $table->json('meta')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
             $table->timestamp('created_at')->useCurrent();
 
             $table->index(['versionable_type','versionable_id','version'], 'version_vault_versions_versionable_index');

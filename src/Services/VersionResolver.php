@@ -270,13 +270,31 @@ class VersionResolver
         $class = get_class($templateModel);
         $instance = new $class();
 
+        // Preserve any already-loaded relations from the template model.
+        // This keeps non-versioned loaded relations intact when reconstructing.
+        foreach ($templateModel->getRelations() as $relName => $relValue) {
+            $instance->setRelation($relName, $relValue);
+        }
+
         // ---------- ATTRIBUTES ----------
         $attributes = $this->mergePrimaryKeyFromMeta($snapshot);
 
+        // If preserving missing attributes, seed with template attributes first.
+        if ($opts['preserve_missing_attributes']) {
+            $instance->setRawAttributes($templateModel->getAttributes(), true);
+            $instance->exists = $templateModel->exists;
+        }
+
         // Apply attributes present in snapshot
         if (!empty($attributes)) {
-            // Use setRawAttributes to avoid mutators interfering; still mark as exists if PK present
-            $instance->setRawAttributes($attributes, true);
+            if ($opts['preserve_missing_attributes']) {
+                foreach ($attributes as $k => $v) {
+                    $instance->setAttribute($k, $v);
+                }
+            } else {
+                // Use setRawAttributes to avoid mutators interfering; still mark as exists if PK present
+                $instance->setRawAttributes($attributes, true);
+            }
         } else {
             // If no attributes in snapshot and preserve_missing_attributes = false,
             // reset to empty attributes (rare; be cautious)

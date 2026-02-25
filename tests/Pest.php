@@ -79,6 +79,7 @@ function ensureVersionsTable(): void
         $t->json('changed_paths')->nullable();
         $t->string('action')->nullable();
         $t->json('meta')->nullable();
+        $t->unsignedBigInteger('created_by')->nullable();
         $t->timestamp('created_at')->nullable();
     });
 }

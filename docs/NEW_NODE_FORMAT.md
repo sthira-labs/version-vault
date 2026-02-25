@@ -13,10 +13,8 @@ A snapshot is a recursive node with attributes and relations.
 ```php
 [
   '__meta' => [
-    'class' => 'App\\Models\\Project',
     'alias' => 'App\\Models\\Project',
     'table' => 'projects',
-    'connection' => 'mysql',
     'primary_key' => 'id',
     'id' => 10,
   ],

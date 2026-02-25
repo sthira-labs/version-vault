@@ -148,28 +148,43 @@ it('reconstructs and rolls back across multiple versions (nested + pivot)', func
         ->and($v4->version)->toBe(4)
         ->and($v5->version)->toBe(5);
 
-    $r1 = $project->fresh()->reconstructVersion(1);
+    $r1 = $project->fresh()->reconstructVersion(1, [
+        'hydrate_loaded_relations_only' => false,
+        'attach_unloaded_relations' => true,
+    ]);
     expect($r1->name)->toBe('Alpha');
     expect($r1->tasks)->toHaveCount(1);
     expect($r1->tasks->first()->title)->toBe('Setup');
     expect($r1->tasks->first()->users->first()->pivot->role)->toBe('dev');
 
-    $r2 = $project->fresh()->reconstructVersion(2);
+    $r2 = $project->fresh()->reconstructVersion(2, [
+        'hydrate_loaded_relations_only' => false,
+        'attach_unloaded_relations' => true,
+    ]);
     expect($r2->name)->toBe('Beta');
     expect($r2->tasks)->toHaveCount(1);
     expect($r2->tasks->first()->title)->toBe('Setup v2');
     expect($r2->tasks->first()->users->first()->pivot->role)->toBe('lead');
 
-    $r3 = $project->fresh()->reconstructVersion(3);
+    $r3 = $project->fresh()->reconstructVersion(3, [
+        'hydrate_loaded_relations_only' => false,
+        'attach_unloaded_relations' => true,
+    ]);
     expect($r3->tasks)->toHaveCount(2);
     expect($r3->tasks->firstWhere('title', 'Docs'))->not()->toBeNull();
     expect($r3->tasks->firstWhere('title', 'Docs')->users->first()->pivot->role)->toBe('qa');
 
-    $r4 = $project->fresh()->reconstructVersion(4);
+    $r4 = $project->fresh()->reconstructVersion(4, [
+        'hydrate_loaded_relations_only' => false,
+        'attach_unloaded_relations' => true,
+    ]);
     expect($r4->tasks)->toHaveCount(1);
     expect($r4->tasks->first()->title)->toBe('Docs');
 
-    $r5 = $project->fresh()->reconstructVersion(5);
+    $r5 = $project->fresh()->reconstructVersion(5, [
+        'hydrate_loaded_relations_only' => false,
+        'attach_unloaded_relations' => true,
+    ]);
     expect($r5->tasks)->toHaveCount(1);
     expect($r5->tasks->first()->title)->toBe('Docs v2');
     expect($r5->tasks->first()->users->first()->pivot->role)->toBe('lead');

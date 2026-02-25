@@ -164,6 +164,13 @@ describe('SnapshotBuilder', function () {
         expect($snapshot['__meta'])
             ->toHaveKey('id')
             ->toHaveKey('primary_key', 'id');
+
+        expect(array_keys($snapshot['__meta']))->toMatchArray([
+            'alias',
+            'table',
+            'primary_key',
+            'id',
+        ]);
         
         expect($snapshot['attributes'])
             ->toHaveKey('price', 12000)
