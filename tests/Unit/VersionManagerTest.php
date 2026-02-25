@@ -54,6 +54,17 @@ beforeEach(function () {
         $t->integer('order')->nullable();
     });
 
+    Schema::create('vm_casts', function (Blueprint $t) {
+        $t->id();
+        $t->string('name');
+        $t->date('due_date')->nullable();
+        $t->dateTime('last_seen_at')->nullable();
+        $t->boolean('is_active')->nullable();
+        $t->integer('count')->nullable();
+        $t->decimal('price', 8, 2)->nullable();
+        $t->json('meta')->nullable();
+    });
+
     ensureVersionsTable();
 });
 
@@ -134,6 +145,34 @@ class VmTag extends Model {
     public $timestamps = false;
 }
 
+class VmCast extends Model implements Versionable {
+    use HasVersioning;
+    protected $table = 'vm_casts';
+    protected $guarded = [];
+    public $timestamps = false;
+
+    protected $casts = [
+        'due_date' => 'date',
+        'last_seen_at' => 'datetime',
+        'is_active' => 'boolean',
+        'count' => 'integer',
+        'price' => 'decimal:2',
+        'meta' => 'array',
+    ];
+
+    public function versioningConfig(): array {
+        return [
+            'name',
+            'due_date',
+            'last_seen_at',
+            'is_active',
+            'count',
+            'price',
+            'meta',
+        ];
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | Tests
@@ -184,4 +223,43 @@ it('handles collections and pivot relations correctly', function () {
     $old = $post->reconstructVersion(1);
     expect($old->comments->first()->body)->toBe('First');
     expect($old->tags->first()->pivot->order)->toBe(1);
+});
+
+it('does not store a version when a casted date attribute is unchanged', function () {
+    $model = VmCast::create([
+        'name' => 'Casty',
+        'due_date' => '2026-02-25',
+    ]);
+
+    $model->recordVersion('created');
+    $model->refresh();
+
+    $v2 = $model->recordVersionIfChanged('noop');
+
+    expect($v2)->toBeNull();
+    expect(Version::where('versionable_type', VmCast::class)
+        ->where('versionable_id', $model->getKey())
+        ->count())->toBe(1);
+});
+
+it('does not store a version when other casted attributes are unchanged', function () {
+    $model = VmCast::create([
+        'name' => 'Casty',
+        'due_date' => '2026-02-25',
+        'last_seen_at' => '2026-02-25 10:15:00',
+        'is_active' => true,
+        'count' => 5,
+        'price' => '10.50',
+        'meta' => ['a' => 1, 'b' => 'x'],
+    ]);
+
+    $model->recordVersion('created');
+    $model->refresh();
+
+    $v2 = $model->recordVersionIfChanged('noop');
+
+    expect($v2)->toBeNull();
+    expect(Version::where('versionable_type', VmCast::class)
+        ->where('versionable_id', $model->getKey())
+        ->count())->toBe(1);
 });

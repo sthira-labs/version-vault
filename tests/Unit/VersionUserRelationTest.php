@@ -50,6 +50,6 @@ it('loads the user relation via created_by', function () {
 
     $fresh = $version->fresh();
 
-    expect($fresh->user)->toBeInstanceOf(VuUser::class)
-        ->and($fresh->user->id)->toBe($user->id);
+    expect($fresh->createdBy)->toBeInstanceOf(VuUser::class)
+        ->and($fresh->createdBy->id)->toBe($user->id);
 });

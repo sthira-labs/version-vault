@@ -22,6 +22,11 @@ dataset('diffAttributesCases', [
             'price' => ['from' => 10.50, 'to' => 10.51],
         ],
     ],
+    'date strings unchanged' => [
+        ['due_date' => '2026-02-25'],
+        ['due_date' => '2026-02-25'],
+        [],
+    ],
     'new and removed keys' => [
         ['a' => 1, 'b' => 2],
         ['a' => 1, 'c' => 3],

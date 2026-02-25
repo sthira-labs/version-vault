@@ -22,6 +22,15 @@ use Illuminate\Support\Arr;
  */
 class SnapshotBuilder
 {
+    protected const DATE_CAST_TYPES = [
+        'date',
+        'datetime',
+        'immutable_date',
+        'immutable_datetime',
+        'custom_datetime',
+        'immutable_custom_datetime',
+    ];
+
     protected ConfigNormalizer $normalizer;
 
     public function __construct(ConfigNormalizer $normalizer)
@@ -38,16 +47,7 @@ class SnapshotBuilder
      */
     public function buildSnapshot(Model $model, ?array $config = null): array
     {
-        // Resolve configuration
-        if ($config === null) {
-            $rawConfig = method_exists($model, 'versioningConfig') 
-                ? $model->versioningConfig() 
-                : [];
-            $config = $this->normalizer->normalize($rawConfig);
-        }
-
-        // Build snapshot
-        return $this->buildNode($model, $config);
+        return $this->buildNode($model, $this->resolveConfig($model, $config));
     }
 
     /**
@@ -70,11 +70,7 @@ class SnapshotBuilder
 
         // Process each configured relation
         foreach ($config['relations'] ?? [] as $relationName => $relationConfig) {
-            $relationData = $this->extractRelation(
-                $model, 
-                $relationName, 
-                $relationConfig
-            );
+            $relationData = $this->extractRelation($model, $relationName, $relationConfig);
 
             if ($relationData !== null) {
                 $node['relations'][$relationName] = $relationData;
@@ -114,12 +110,12 @@ class SnapshotBuilder
      */
     protected function extractAttributes(Model $model, array $attributeConfig): array
     {
-        $attributes = [];
+        $rawAttributes = $model->getAttributes();
 
         // Handle wildcard
         if (in_array('*', $attributeConfig, true)) {
-            return Arr::except(
-                $model->getAttributes(),
+            $filtered = Arr::except(
+                $rawAttributes,
                 [
                     $model->getKeyName(),
                     'created_at',
@@ -127,16 +123,41 @@ class SnapshotBuilder
                     'deleted_at',
                 ]
             );
+            return $this->mapAttributeValues($model, $filtered);
         }
 
         // Extract specific attributes
+        $attributes = [];
         foreach ($attributeConfig as $key) {
-            if ($model->offsetExists($key)) {
+            if (array_key_exists($key, $rawAttributes)) {
+                $attributes[$key] = $this->valueForAttribute($model, $key, $rawAttributes[$key]);
+            } elseif ($model->offsetExists($key)) {
+                // Fallback for non-raw attributes/accessors
                 $attributes[$key] = $model->getAttribute($key);
             }
         }
 
         return $attributes;
+    }
+
+    protected function shouldUseRawForAttribute(Model $model, string $key): bool
+    {
+        $casts = $model->getCasts();
+        if (isset($casts[$key])) {
+            $cast = $casts[$key];
+            if (is_string($cast)) {
+                $castType = strtolower(explode(':', $cast, 2)[0]);
+                if (in_array($castType, self::DATE_CAST_TYPES, true)) {
+                    return true;
+                }
+            }
+        }
+
+        if (method_exists($model, 'getDates')) {
+            return in_array($key, $model->getDates(), true);
+        }
+
+        return false;
     }
 
     /**
@@ -277,5 +298,34 @@ class SnapshotBuilder
             'type' => 'pivot',
             'items' => $items
         ];
+    }
+
+    protected function resolveConfig(Model $model, ?array $config): array
+    {
+        if ($config !== null) {
+            return $config;
+        }
+
+        $rawConfig = method_exists($model, 'versioningConfig')
+            ? $model->versioningConfig()
+            : [];
+
+        return $this->normalizer->normalize($rawConfig);
+    }
+
+    protected function mapAttributeValues(Model $model, array $attributes): array
+    {
+        $mapped = [];
+        foreach ($attributes as $key => $value) {
+            $mapped[$key] = $this->valueForAttribute($model, (string) $key, $value);
+        }
+        return $mapped;
+    }
+
+    protected function valueForAttribute(Model $model, string $key, mixed $rawValue): mixed
+    {
+        return $this->shouldUseRawForAttribute($model, $key)
+            ? $rawValue
+            : $model->getAttribute($key);
     }
 }
