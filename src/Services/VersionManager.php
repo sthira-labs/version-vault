@@ -16,6 +16,7 @@ use SthiraLabs\VersionVault\Events\VersionRecorded;
 use SthiraLabs\VersionVault\Events\VersionRecording;
 use SthiraLabs\VersionVault\Events\VersionRollback;
 use SthiraLabs\VersionVault\Models\Version;
+use SthiraLabs\VersionVault\Services\ReconstructionResult;
 
 /**
  * VersionManager
@@ -153,7 +154,7 @@ class VersionManager
         Versionable|Model $model,
         int $version,
         array $options = []
-    ): Model|array {
+    ): ReconstructionResult {
         $this->debug('reconstruct.start', [
             'model' => $model::class,
             'id' => $model->getKey(),
@@ -201,17 +202,23 @@ class VersionManager
             'relations' => count($state['relations'] ?? []),
         ]);
 
-        if (!($options['with_diff_paths'] ?? false)) {
-            return $hydrated;
+        $withDiffPaths = $options['with_diff_paths']
+            ?? config('version-vault.reconstruct.with_diff_paths', false);
+
+        $changedPaths = [];
+        $diff = [];
+
+        if ($withDiffPaths) {
+            $versionRow = $model->versions()->where('version', $version)->first();
+            $changedPaths = $versionRow?->changed_paths ?? [];
+            $diff = $versionRow?->diff ?? [];
         }
 
-        $versionRow = $model->versions()->where('version', $version)->first();
-
-        return [
-            'model' => $hydrated,
-            'changed_paths' => $versionRow?->changed_paths ?? [],
-            'diff' => $versionRow?->diff ?? [],
-        ];
+        return new ReconstructionResult(
+            $hydrated,
+            $changedPaths,
+            $diff
+        );
     }
 
     /**

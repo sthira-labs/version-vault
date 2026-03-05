@@ -94,8 +94,13 @@ trait HasVersioning
 
     /**
      * Reconstruct a hydrated (non-persisted) model for a version.
+     *
+     * @param int $version
+     * @param array $options
+     *
+     * @return \SthiraLabs\VersionVault\Services\ReconstructionResult
      */
-    public function reconstructVersion(int $version, array $options = []): Model|array
+    public function reconstructVersion(int $version, array $options = []): \SthiraLabs\VersionVault\Services\ReconstructionResult
     {
         $this->ensureVersionable();
 

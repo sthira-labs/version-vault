@@ -60,11 +60,16 @@ class Project extends Model
 $project->recordVersion('created');
 $project->recordVersionIfChanged('updated');
 
-$historic = $project->reconstructVersion(2);
+$result = $project->reconstructVersion(2);
+$historic = $result->model;
 $rollback = $project->rollbackToVersion(2);
 ```
 
 Reconstruction is non-destructive by default: existing loaded relations on the template model are preserved, and only attributes present in the snapshot are applied. Relations not present in the snapshot remain untouched unless you enable `attach_unloaded_relations` or `force_replace_relation`.
+`reconstructVersion()` always returns a `ReconstructionResult` DTO with:
+- `model` (Model): the reconstructed model instance
+- `changedPaths` (array): populated only when diff paths are enabled
+- `diff` (array): populated only when diff paths are enabled
 
 ## Configuration
 Config file: `config/version-vault.php`
@@ -82,6 +87,7 @@ Config file: `config/version-vault.php`
 - `reconstruct.preserve_missing_attributes` (bool): keep template attributes not present in the snapshot (default true)
 - `reconstruct.attach_unloaded_relations` (bool): build relations even when not loaded (default false)
 - `reconstruct.force_replace_relation` (bool): replace relation objects rather than update in-place (default false)
+- `reconstruct.with_diff_paths` (bool): include diff + changed paths in reconstruction result (default false)
 - `bindings` (array): override internal services (change detector, snapshot builder, resolver, manager, etc.)
 
 ## Version Records (created_by)

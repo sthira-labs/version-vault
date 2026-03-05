@@ -35,6 +35,11 @@ beforeEach(function () {
         $t->string('role');
     });
 
+    Schema::create('hv_no_configs', function (Blueprint $t) {
+        $t->id();
+        $t->string('name')->nullable();
+    });
+
     ensureVersionsTable();
 });
 
@@ -80,6 +85,13 @@ class HvUser extends Model {
     public $timestamps = false;
 }
 
+class HvNoConfig extends Model {
+    use HasVersioning;
+    protected $table = 'hv_no_configs';
+    protected $guarded = [];
+    public $timestamps = false;
+}
+
 /*
 |--------------------------------------------------------------------------
 | Tests
@@ -90,6 +102,13 @@ it('prevents versioning on unsaved model', function () {
     $project = new HvProject(['name' => 'Draft']);
 
     expect(fn () => $project->recordVersion())
+        ->toThrow(LogicException::class);
+});
+
+it('requires a versioningConfig method on the model', function () {
+    $model = HvNoConfig::create(['name' => 'NoConfig']);
+
+    expect(fn () => $model->recordVersion())
         ->toThrow(LogicException::class);
 });
 
@@ -152,42 +171,42 @@ it('reconstructs and rolls back across multiple versions (nested + pivot)', func
         'hydrate_loaded_relations_only' => false,
         'attach_unloaded_relations' => true,
     ]);
-    expect($r1->name)->toBe('Alpha');
-    expect($r1->tasks)->toHaveCount(1);
-    expect($r1->tasks->first()->title)->toBe('Setup');
-    expect($r1->tasks->first()->users->first()->pivot->role)->toBe('dev');
+    expect($r1->model->name)->toBe('Alpha');
+    expect($r1->model->tasks)->toHaveCount(1);
+    expect($r1->model->tasks->first()->title)->toBe('Setup');
+    expect($r1->model->tasks->first()->users->first()->pivot->role)->toBe('dev');
 
     $r2 = $project->fresh()->reconstructVersion(2, [
         'hydrate_loaded_relations_only' => false,
         'attach_unloaded_relations' => true,
     ]);
-    expect($r2->name)->toBe('Beta');
-    expect($r2->tasks)->toHaveCount(1);
-    expect($r2->tasks->first()->title)->toBe('Setup v2');
-    expect($r2->tasks->first()->users->first()->pivot->role)->toBe('lead');
+    expect($r2->model->name)->toBe('Beta');
+    expect($r2->model->tasks)->toHaveCount(1);
+    expect($r2->model->tasks->first()->title)->toBe('Setup v2');
+    expect($r2->model->tasks->first()->users->first()->pivot->role)->toBe('lead');
 
     $r3 = $project->fresh()->reconstructVersion(3, [
         'hydrate_loaded_relations_only' => false,
         'attach_unloaded_relations' => true,
     ]);
-    expect($r3->tasks)->toHaveCount(2);
-    expect($r3->tasks->firstWhere('title', 'Docs'))->not()->toBeNull();
-    expect($r3->tasks->firstWhere('title', 'Docs')->users->first()->pivot->role)->toBe('qa');
+    expect($r3->model->tasks)->toHaveCount(2);
+    expect($r3->model->tasks->firstWhere('title', 'Docs'))->not()->toBeNull();
+    expect($r3->model->tasks->firstWhere('title', 'Docs')->users->first()->pivot->role)->toBe('qa');
 
     $r4 = $project->fresh()->reconstructVersion(4, [
         'hydrate_loaded_relations_only' => false,
         'attach_unloaded_relations' => true,
     ]);
-    expect($r4->tasks)->toHaveCount(1);
-    expect($r4->tasks->first()->title)->toBe('Docs');
+    expect($r4->model->tasks)->toHaveCount(1);
+    expect($r4->model->tasks->first()->title)->toBe('Docs');
 
     $r5 = $project->fresh()->reconstructVersion(5, [
         'hydrate_loaded_relations_only' => false,
         'attach_unloaded_relations' => true,
     ]);
-    expect($r5->tasks)->toHaveCount(1);
-    expect($r5->tasks->first()->title)->toBe('Docs v2');
-    expect($r5->tasks->first()->users->first()->pivot->role)->toBe('lead');
+    expect($r5->model->tasks)->toHaveCount(1);
+    expect($r5->model->tasks->first()->title)->toBe('Docs v2');
+    expect($r5->model->tasks->first()->users->first()->pivot->role)->toBe('lead');
 
     $rollback = $project->rollbackToVersion(2);
     expect($rollback)->toBeInstanceOf(Version::class);
@@ -196,4 +215,21 @@ it('reconstructs and rolls back across multiple versions (nested + pivot)', func
     expect($project->fresh()->tasks->first()->title)->toBe('Setup v2');
     expect($project->fresh()->tasks->first()->users->first()->pivot->role)->toBe('lead');
     expect($project->versionNumber())->toBe(6);
+});
+
+it('clears and prunes versions', function () {
+    $project = HvProject::create(['name' => 'Alpha']);
+
+    $project->recordVersion('v1');
+    $project->update(['name' => 'Beta']);
+    $project->recordVersion('v2');
+    $project->update(['name' => 'Gamma']);
+    $project->recordVersion('v3');
+
+    $deleted = $project->pruneVersions(['keep_last' => 1]);
+    expect($deleted)->toBe(2);
+
+    $project->clearVersions();
+    expect($project->versions()->count())->toBe(0)
+        ->and($project->versionNumber())->toBe(0);
 });

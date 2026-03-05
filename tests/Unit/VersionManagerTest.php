@@ -197,8 +197,8 @@ it('records and reconstructs deep nested relations', function () {
     );
 
     $old = $user->reconstructVersion(1);
-    expect($old->profile->phone)->toBe('111');
-    expect($old->profile->address->city)->toBe('Delhi');
+    expect($old->model->profile->phone)->toBe('111');
+    expect($old->model->profile->address->city)->toBe('Delhi');
 });
 
 it('handles collections and pivot relations correctly', function () {
@@ -221,8 +221,8 @@ it('handles collections and pivot relations correctly', function () {
     );
 
     $old = $post->reconstructVersion(1);
-    expect($old->comments->first()->body)->toBe('First');
-    expect($old->tags->first()->pivot->order)->toBe(1);
+    expect($old->model->comments->first()->body)->toBe('First');
+    expect($old->model->tags->first()->pivot->order)->toBe(1);
 });
 
 it('does not store a version when a casted date attribute is unchanged', function () {

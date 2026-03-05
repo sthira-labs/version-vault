@@ -88,6 +88,8 @@ return [
         'attach_unloaded_relations' => false,
         // If true, replace relation objects rather than update in-place
         'force_replace_relation' => false,
+        // Include diff + changed_paths when reconstructing versions
+        'with_diff_paths' => false,
     ],
 
     /*

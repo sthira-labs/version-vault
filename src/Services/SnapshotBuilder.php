@@ -153,8 +153,8 @@ class SnapshotBuilder
             }
         }
 
-        if (method_exists($model, 'getDates')) {
-            return in_array($key, $model->getDates(), true);
+        if (method_exists($model, 'getDates') && in_array($key, $model->getDates(), true)) {
+            return true;
         }
 
         return false;

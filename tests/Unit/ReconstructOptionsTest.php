@@ -80,5 +80,5 @@ it('respects reconstruct defaults to avoid hydrating unloaded relations', functi
     $user->unsetRelation('profile');
     $reconstructed = $user->reconstructVersion(1);
 
-    expect($reconstructed->relationLoaded('profile'))->toBeFalse();
+    expect($reconstructed->model->relationLoaded('profile'))->toBeFalse();
 });

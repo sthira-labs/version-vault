@@ -92,8 +92,8 @@ it('records, reconstructs, and rolls back belongsTo + hasOne changes', function 
         'hydrate_loaded_relations_only' => false,
         'attach_unloaded_relations' => true,
     ]);
-    expect($r1->status->name)->toBe('Open');
-    expect($r1->profile->phone)->toBe('111');
+    expect($r1->model->status->name)->toBe('Open');
+    expect($r1->model->profile->phone)->toBe('111');
 
     $rollback = $user->rollbackToVersion(1);
     expect($rollback)->toBeInstanceOf(Version::class);

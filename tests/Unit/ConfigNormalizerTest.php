@@ -253,7 +253,26 @@ describe('ConfigNormalizer', function () {
             'valid_attribute',
             123, // Invalid entry type
         ];
-    
+
         expect(fn() => normalizer()->normalize($config))->toThrow(InvalidArgumentException::class);
+    });
+
+    test('it supports boolean true shorthand for relations without fields', function () {
+        $config = [
+            'documents' => true,
+        ];
+
+        $expected = [
+            'attributes' => [],
+            'relations' => [
+                'documents' => array_merge(CANONICAL_NODE, [
+                    'attributes' => [],
+                    'relations' => [],
+                    'pivot' => [],
+                ]),
+            ],
+        ];
+
+        expect(normalizer()->normalize($config))->toEqual($expected);
     });
 });
