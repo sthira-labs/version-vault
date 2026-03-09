@@ -157,6 +157,11 @@ Creation/deletion uses markers:
 - `_created` replaces with the provided snapshot node.
 - `_deleted` removes the node (null for relations).
 - Collection and pivot diffs update `items` by `added/removed/updated` or `attached/detached/updated`.
+- During model hydration, `reconstruct.prune_missing_many_relations` controls whether loaded `*Many` relations are strictly pruned to target-version items.
+
+Note on relation modes:
+- In `reference` mode, relation nodes may be absent from the snapshot. Foreign keys are tracked as attributes instead.
+- In `snapshot` mode, relation nodes include the related model attributes and nested relations.
 
 ---
 
@@ -166,6 +171,10 @@ Creation/deletion uses markers:
 
 - `name`
 - `profile.phone`
+- `comments.added`
+- `comments.101.added`
+- `comments.removed`
+- `comments.101.removed`
 - `comments[101].body`
 - `tags[301].pivot.order`
 

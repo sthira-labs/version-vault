@@ -80,8 +80,7 @@ class ChangeDetector
             $fromValue = $from[$key] ?? null;
             $toValue = $to[$key] ?? null;
 
-            // Use strict comparison for accuracy
-            if ($fromValue !== $toValue) {
+            if (!$this->valuesAreEquivalent($fromValue, $toValue)) {
                 $diff[$key] = [
                     'from' => $fromValue,
                     'to' => $toValue
@@ -90,6 +89,65 @@ class ChangeDetector
         }
 
         return $diff;
+    }
+
+    /**
+     * Determine whether two scalar values should be treated as equal for diffing.
+     *
+     * Numeric foreign keys may arrive as strings from one snapshot and integers
+     * from another; those should not produce noisy diffs.
+     */
+    protected function valuesAreEquivalent(mixed $fromValue, mixed $toValue): bool
+    {
+        if ($fromValue === $toValue) {
+            return true;
+        }
+
+        if ($fromValue === null || $toValue === null) {
+            return false;
+        }
+
+        if (is_numeric($fromValue) && is_numeric($toValue)) {
+            return $this->normalizeNumericValue($fromValue) === $this->normalizeNumericValue($toValue);
+        }
+
+        return false;
+    }
+
+    protected function normalizeNumericValue(mixed $value): string
+    {
+        $string = trim((string) $value);
+        $negative = false;
+
+        if ($string !== '' && $string[0] === '-') {
+            $negative = true;
+            $string = substr($string, 1);
+        } elseif ($string !== '' && $string[0] === '+') {
+            $string = substr($string, 1);
+        }
+
+        if (str_contains($string, '.')) {
+            [$intPart, $fracPart] = explode('.', $string, 2);
+            $intPart = ltrim($intPart, '0');
+            $fracPart = rtrim($fracPart, '0');
+
+            if ($intPart === '') {
+                $intPart = '0';
+            }
+
+            $normalized = $fracPart === '' ? $intPart : "{$intPart}.{$fracPart}";
+        } else {
+            $normalized = ltrim($string, '0');
+            if ($normalized === '') {
+                $normalized = '0';
+            }
+        }
+
+        if ($normalized === '0') {
+            return '0';
+        }
+
+        return $negative ? "-{$normalized}" : $normalized;
     }
 
     /**
@@ -220,6 +278,10 @@ class ChangeDetector
         // Track removed items
         if (!empty($removed)) {
             $diff['removed'] = $removed;
+            $diff['removed_data'] = [];
+            foreach ($removed as $id) {
+                $diff['removed_data'][$id] = $fromItems[$id];
+            }
         }
 
         // Track updated items
@@ -275,6 +337,10 @@ class ChangeDetector
         // Track detached items
         if (!empty($detached)) {
             $diff['detached'] = $detached;
+            $diff['detached_data'] = [];
+            foreach ($detached as $id) {
+                $diff['detached_data'][$id] = $fromItems[$id];
+            }
         }
 
         // Track updated items (model attributes or pivot data changed)
@@ -454,8 +520,11 @@ class ChangeDetector
 
             // added, removed, attached, detached
             foreach (['added', 'removed', 'attached', 'detached'] as $op) {
-                if (isset($relation[$op])) {
+                if (isset($relation[$op]) && is_array($relation[$op])) {
                     $paths[] = "{$base}.{$op}";
+                    foreach ($relation[$op] as $id) {
+                        $paths[] = "{$base}.{$id}.{$op}";
+                    }
                 }
             }
 

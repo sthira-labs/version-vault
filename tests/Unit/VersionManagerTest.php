@@ -225,6 +225,81 @@ it('handles collections and pivot relations correctly', function () {
     expect($old->model->tags->first()->pivot->order)->toBe(1);
 });
 
+it('includes removed many-relation item id paths in changed_paths even when pruning is disabled', function () {
+    config(['version-vault.reconstruct.prune_missing_many_relations' => false]);
+
+    $post = VmPost::create(['title' => 'Post']);
+    $commentA = $post->comments()->create(['body' => 'First']);
+    $post->comments()->create(['body' => 'Second']);
+
+    $post->recordVersion('v1');
+
+    $commentA->delete();
+    $v2 = $post->recordVersionIfChanged('removed-comment');
+
+    expect($v2)->not->toBeNull()
+        ->and($v2->changed_paths)->toContain("comments.{$commentA->id}.removed");
+});
+
+it('reconstructs removed hasMany items when pruning is disabled', function () {
+    config([
+        'version-vault.reconstruct.prune_missing_many_relations' => false,
+    ]);
+
+    $post = VmPost::create(['title' => 'Post']);
+    $commentA = $post->comments()->create(['body' => 'First']);
+    $commentB = $post->comments()->create(['body' => 'Second']);
+
+    $post->recordVersion('v1');
+
+    $commentA->update(['body' => 'First Updated']);
+    $commentB->delete();
+    $commentC = $post->comments()->create(['body' => 'Third']);
+
+    $post->recordVersionIfChanged('v2');
+
+    $reconstructed = $post->fresh()->reconstructVersion(2, [
+        'reconstruct_relations' => ['comments'],
+        'attach_unloaded_relations' => true,
+        'prune_missing_many_relations' => false,
+    ]);
+
+    $comments = $reconstructed->model->comments;
+    expect($comments->pluck('id')->sort()->values()->all())
+        ->toBe([$commentA->id, $commentB->id, $commentC->id])
+        ->and($comments->firstWhere('id', $commentA->id)->body)->toBe('First Updated')
+        ->and($comments->firstWhere('id', $commentB->id)->body)->toBe('Second')
+        ->and($comments->firstWhere('id', $commentC->id)->body)->toBe('Third');
+});
+
+it('does not carry previous tombstoned removals into later versions when pruning is disabled', function () {
+    config([
+        'version-vault.reconstruct.prune_missing_many_relations' => false,
+    ]);
+
+    $post = VmPost::create(['title' => 'Post']);
+    $commentA = $post->comments()->create(['body' => 'First']);
+    $commentB = $post->comments()->create(['body' => 'Second']);
+
+    $post->recordVersion('v1');
+
+    $commentB->delete();
+    $post->recordVersionIfChanged('v2-remove');
+
+    // v3 has only top-level attribute change; no comment relation diff.
+    $post->update(['title' => 'Post Updated']);
+    $post->recordVersionIfChanged('v3-attr-only');
+
+    $reconstructedV3 = $post->fresh()->reconstructVersion(3, [
+        'reconstruct_relations' => ['comments'],
+        'attach_unloaded_relations' => true,
+        'prune_missing_many_relations' => false,
+    ]);
+
+    expect($reconstructedV3->model->comments->pluck('id')->sort()->values()->all())
+        ->toBe([$commentA->id]);
+});
+
 it('does not store a version when a casted date attribute is unchanged', function () {
     $model = VmCast::create([
         'name' => 'Casty',

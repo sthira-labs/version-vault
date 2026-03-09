@@ -66,6 +66,7 @@ it('builds changed paths for top-level ops, nested relations, and recursive arra
 
     expect($paths)->toContain('title')
         ->and($paths)->toContain('tags.attached')
+        ->and($paths)->toContain('tags.1.attached')
         ->and($paths)->toContain('tags[1].pivot.order')
         ->and($paths)->toContain('tags[1].author.name')
         ->and($paths)->toContain('misc.flag');

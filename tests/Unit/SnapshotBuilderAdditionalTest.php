@@ -24,6 +24,18 @@ beforeEach(function () {
         $t->unsignedBigInteger('sb_tag_id');
         $t->string('note')->nullable();
     });
+
+    Schema::create('sb_morphables', function (Blueprint $t) {
+        $t->id();
+        $t->string('name');
+    });
+
+    Schema::create('sb_morphs', function (Blueprint $t) {
+        $t->id();
+        $t->unsignedBigInteger('morphable_id')->nullable();
+        $t->string('morphable_type')->nullable();
+        $t->string('name')->nullable();
+    });
 });
 
 class SbPost extends Model
@@ -77,6 +89,52 @@ class SbWeird extends Model
     public function odd()
     {
         return new stdClass();
+    }
+}
+
+class SbMorphable extends Model
+{
+    protected $table = 'sb_morphables';
+    protected $guarded = [];
+    public $timestamps = false;
+}
+
+class SbMorph extends Model
+{
+    protected $table = 'sb_morphs';
+    protected $guarded = [];
+    public $timestamps = false;
+
+    public function morphable()
+    {
+        return $this->morphTo(null, 'morphable_type', 'morphable_id');
+    }
+}
+
+class SbBrokenRelation extends Model
+{
+    protected $guarded = [];
+    public $timestamps = false;
+
+    public function broken()
+    {
+        throw new RuntimeException('broken');
+    }
+}
+
+class SbLoadThrows extends Model
+{
+    protected $guarded = [];
+    public $timestamps = false;
+
+    public function load($relations)
+    {
+        throw new RuntimeException('load failed');
+    }
+
+    public function tags()
+    {
+        return $this->belongsToMany(SbTag::class, 'sb_post_tag', 'sb_post_id', 'sb_tag_id');
     }
 }
 
@@ -188,4 +246,84 @@ it('defaults to empty config when model has no versioningConfig', function () {
 
     expect($snapshot['attributes'])->toBeArray()
         ->and($snapshot['attributes'])->toBe([]);
+});
+
+it('adds morph keys for reference relations', function () {
+    $morphable = SbMorphable::create(['name' => 'Target']);
+    $model = SbMorph::create([
+        'name' => 'Node',
+        'morphable_id' => $morphable->id,
+        'morphable_type' => SbMorphable::class,
+    ]);
+
+    $relationInstance = $model->morphable();
+    expect($relationInstance)->toBeInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphTo::class)
+        ->and($relationInstance->getMorphType())->toBe('morphable_type');
+
+    $builder = new SnapshotBuilder(new ConfigNormalizer());
+    $method = new ReflectionMethod(SnapshotBuilder::class, 'augmentAttributesForReferenceRelations');
+    $method->setAccessible(true);
+    $modeMethod = new ReflectionMethod(SnapshotBuilder::class, 'getRelationMode');
+    $modeMethod->setAccessible(true);
+
+    $relationConfig = ['attributes' => [], 'relations' => [], 'pivot' => []];
+    expect($modeMethod->invoke($builder, $relationConfig))->toBe('reference');
+
+    $attrs = $method->invoke($builder, $model, [
+        'morphable' => $relationConfig,
+    ], ['name']);
+
+    expect($attrs)->toContain('morphable_id', 'morphable_type');
+});
+
+it('respects explicit snapshot mode even without attributes', function () {
+    $post = SbPost::create(['title' => 'Explicit']);
+    $tag = SbTag::create(['name' => 'Tag A']);
+    $post->tags()->attach($tag->id, ['note' => 'pinned']);
+
+    $builder = new SnapshotBuilder(new ConfigNormalizer());
+    $config = [
+        'attributes' => ['title'],
+        'relations' => [
+            'tags' => ['mode' => 'snapshot', 'attributes' => [], 'relations' => [], 'pivot' => []],
+        ],
+    ];
+
+    $snapshot = $builder->buildSnapshot($post, $config);
+
+    expect($snapshot['relations']['tags'])->toBeArray();
+});
+
+it('skips relations when relation resolution throws', function () {
+    $model = new SbBrokenRelation();
+    $model->name = 'Broken';
+
+    $builder = new SnapshotBuilder(new ConfigNormalizer());
+    $config = [
+        'attributes' => ['name'],
+        'relations' => [
+            'broken' => ['attributes' => [], 'relations' => [], 'pivot' => []],
+        ],
+    ];
+
+    $snapshot = $builder->buildSnapshot($model, $config);
+
+    expect(isset($snapshot['relations']['broken']))->toBeFalse();
+});
+
+it('skips relations when load fails', function () {
+    $model = new SbLoadThrows();
+    $model->title = 'Oops';
+
+    $builder = new SnapshotBuilder(new ConfigNormalizer());
+    $config = [
+        'attributes' => ['title'],
+        'relations' => [
+            'tags' => ['attributes' => ['*'], 'relations' => [], 'pivot' => []],
+        ],
+    ];
+
+    $snapshot = $builder->buildSnapshot($model, $config);
+
+    expect(isset($snapshot['relations']['tags']))->toBeFalse();
 });

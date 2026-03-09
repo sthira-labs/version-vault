@@ -14,6 +14,7 @@ class MockModel extends Model
     public function author() { return $this->hasOne(MockModel::class); }
     public function comments() { return $this->hasMany(MockModel::class); }
     public function tags() { return $this->belongsToMany(MockModel::class, 'post_tag'); }
+    public function morphComments() { return $this->morphMany(MockModel::class, 'commentable'); }
     public function profile() { return $this->belongsTo(MockModel::class); }
 }
 
@@ -213,6 +214,83 @@ describe('VersionResolver', function () {
         expect($final['relations']['tags']['items'][302]['pivot']['order'])->toBe(5);
     });
 
+    it('stores detached_data as removed tombstones during pivot diff replay', function () use ($baseSnapshot) {
+        $diff = [
+            'relations' => [
+                'tags' => [
+                    'type' => 'pivot',
+                    'detached' => [301],
+                    'detached_data' => [
+                        301 => [
+                            'attributes' => ['id' => 301, 'name' => 'Tag A (detached)'],
+                            'pivot' => ['post_id' => 100, 'tag_id' => 301, 'order' => 1],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $final = resolver()->applyDiffsToSnapshot($baseSnapshot, [$diff]);
+
+        expect(isset($final['relations']['tags']['items'][301]))->toBeFalse()
+            ->and($final['relations']['tags']['_removed_items'][301]['attributes']['name'])->toBe('Tag A (detached)');
+    });
+
+    it('does not keep removed tombstones across later diffs without remove/detach operations', function () use ($baseSnapshot) {
+        $removeDiff = [
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    'removed' => [202],
+                    'removed_data' => [
+                        202 => [
+                            'attributes' => ['id' => 202, 'content' => 'Removed Comment'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $laterUnrelatedDiff = [
+            'attributes' => [
+                'name' => ['from' => 'Initial Document Name', 'to' => 'Later Name'],
+            ],
+        ];
+
+        $final = resolver()->applyDiffsToSnapshot($baseSnapshot, [$removeDiff, $laterUnrelatedDiff]);
+
+        expect($final['attributes']['name'])->toBe('Later Name')
+            ->and(isset($final['relations']['comments']['_removed_items']))->toBeFalse();
+    });
+
+    it('clears tombstones safely when collection items include unexpected non-array entries', function () {
+        $snapshot = [
+            'attributes' => ['id' => 100, 'name' => 'Base'],
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    '_removed_items' => [
+                        999 => ['attributes' => ['id' => 999, 'content' => 'Old Tombstone']],
+                    ],
+                    'items' => [
+                        201 => 'unexpected-scalar-item',
+                    ],
+                ],
+            ],
+        ];
+
+        $diff = [
+            'attributes' => [
+                'name' => ['from' => 'Base', 'to' => 'Updated'],
+            ],
+        ];
+
+        $final = resolver()->applyDiffsToSnapshot($snapshot, [$diff]);
+
+        expect($final['attributes']['name'])->toBe('Updated')
+            ->and(isset($final['relations']['comments']['_removed_items']))->toBeFalse();
+    });
+
     // --- HYDRATION TESTS (hydrateModelFromSnapshot) ---
     $hydrationSnapshot = [
         'attributes' => [
@@ -342,5 +420,313 @@ describe('VersionResolver', function () {
         $tag53 = $hydrated->tags->firstWhere('id', 53);
         expect($tag53->label)->toBe('B')
             ->and($tag53->pivot->order)->toBe(2);
+    });
+
+    it('syncs hasMany collections to canonical snapshot and unsets stale loaded items', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    'items' => [
+                        201 => [
+                            'attributes' => ['id' => 201, 'content' => 'From Snapshot'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('comments', new Collection([
+            new MockModel(['id' => 201, 'content' => 'Old Value']),
+            new MockModel(['id' => 202, 'content' => 'Stale']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+        ]);
+
+        expect($hydrated->comments->pluck('id')->all())->toBe([201])
+            ->and($hydrated->comments->first()->content)->toBe('From Snapshot');
+    });
+
+    it('syncs belongsToMany collections to canonical snapshot and unsets stale loaded items', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'tags' => [
+                    'type' => 'pivot',
+                    'items' => [
+                        51 => [
+                            'attributes' => ['id' => 51, 'label' => 'A'],
+                            'pivot' => ['doc_id' => 10, 'tag_id' => 51, 'order' => 1],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+
+        $tag51 = new MockModel(['id' => 51, 'label' => 'Old A']);
+        $tag52 = new MockModel(['id' => 52, 'label' => 'Stale B']);
+        $tag52->setRelation('pivot', new MockModel(['order' => 99]));
+        $model->setRelation('tags', new Collection([$tag51, $tag52]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+        ]);
+
+        expect($hydrated->tags->pluck('id')->all())->toBe([51])
+            ->and($hydrated->tags->first()->label)->toBe('A')
+            ->and($hydrated->tags->first()->pivot->order)->toBe(1);
+    });
+
+    it('syncs morphMany collections to canonical snapshot and unsets stale loaded items', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'morphComments' => [
+                    'type' => 'collection',
+                    'items' => [
+                        901 => [
+                            'attributes' => ['id' => 901, 'content' => 'A'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('morphComments', new Collection([
+            new MockModel(['id' => 901, 'content' => 'Old A']),
+            new MockModel(['id' => 902, 'content' => 'Stale B']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+        ]);
+
+        expect($hydrated->morphComments->pluck('id')->all())->toBe([901])
+            ->and($hydrated->morphComments->first()->content)->toBe('A');
+    });
+
+    it('syncs to target-version many items even when prune_missing_many_relations is disabled', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    'items' => [
+                        201 => [
+                            'attributes' => ['id' => 201, 'content' => 'From Snapshot'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('comments', new Collection([
+            new MockModel(['id' => 201, 'content' => 'Old Value']),
+            new MockModel(['id' => 202, 'content' => 'Keep Me']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'prune_missing_many_relations' => false,
+        ]);
+
+        expect($hydrated->comments->pluck('id')->all())->toBe([201])
+            ->and($hydrated->comments->firstWhere('id', 201)->content)->toBe('From Snapshot')
+            ->and($hydrated->comments->firstWhere('id', 202))->toBeNull();
+    });
+
+    it('keeps explicitly removed records but drops unrelated stale records when pruning is disabled', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    'removed' => [202],
+                    'items' => [
+                        201 => [
+                            'attributes' => ['id' => 201, 'content' => 'From Snapshot'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('comments', new Collection([
+            new MockModel(['id' => 201, 'content' => 'Old Value']),
+            new MockModel(['id' => 202, 'content' => 'Deleted In Target']),
+            new MockModel(['id' => 999, 'content' => 'Unrelated Stale']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'prune_missing_many_relations' => false,
+        ]);
+
+        expect($hydrated->comments->pluck('id')->sort()->values()->all())->toBe([201, 202])
+            ->and($hydrated->comments->firstWhere('id', 201)->content)->toBe('From Snapshot')
+            ->and($hydrated->comments->firstWhere('id', 202)->content)->toBe('Deleted In Target')
+            ->and($hydrated->comments->firstWhere('id', 999))->toBeNull();
+    });
+
+    it('rehydrates removed many-relation items from canonical tombstones when pruning is disabled', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    'items' => [
+                        201 => [
+                            'attributes' => ['id' => 201, 'content' => 'Current'],
+                        ],
+                    ],
+                    '_removed_items' => [
+                        202 => [
+                            'attributes' => ['id' => 202, 'content' => 'Removed Earlier'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('comments', new Collection([
+            new MockModel(['id' => 201, 'content' => 'Old Current']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'prune_missing_many_relations' => false,
+        ]);
+
+        expect($hydrated->comments->pluck('id')->sort()->values()->all())->toBe([201, 202])
+            ->and($hydrated->comments->firstWhere('id', 201)->content)->toBe('Current')
+            ->and($hydrated->comments->firstWhere('id', 202)->content)->toBe('Removed Earlier');
+    });
+
+    it('does not duplicate removed tombstones when the item already exists in the loaded collection', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'comments' => [
+                    'type' => 'collection',
+                    'items' => [
+                        201 => [
+                            'attributes' => ['id' => 201, 'content' => 'Current'],
+                        ],
+                    ],
+                    '_removed_items' => [
+                        201 => [
+                            'attributes' => ['id' => 201, 'content' => 'Removed Tombstone'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('comments', new Collection([
+            new MockModel(['id' => 201, 'content' => 'Already Loaded']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'prune_missing_many_relations' => false,
+        ]);
+
+        expect($hydrated->comments->pluck('id')->all())->toBe([201])
+            ->and($hydrated->comments->first()->content)->toBe('Current');
+    });
+
+    it('restores removed pivot tombstones with pivot attributes when pruning is disabled', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'tags' => [
+                    'type' => 'pivot',
+                    'items' => [
+                        51 => [
+                            'attributes' => ['id' => 51, 'label' => 'A'],
+                            'pivot' => ['doc_id' => 10, 'tag_id' => 51, 'order' => 1],
+                        ],
+                    ],
+                    '_removed_items' => [
+                        52 => [
+                            'attributes' => ['id' => 52, 'label' => 'B'],
+                            'pivot' => ['doc_id' => 10, 'tag_id' => 52, 'order' => 2],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('tags', new Collection([
+            new MockModel(['id' => 51, 'label' => 'Old A']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'prune_missing_many_relations' => false,
+        ]);
+
+        expect($hydrated->tags->pluck('id')->sort()->values()->all())->toBe([51, 52])
+            ->and($hydrated->tags->firstWhere('id', 52)->pivot->order)->toBe(2);
+    });
+
+    it('handles detached ids in pivot hydration and does not re-add detached items present in items map', function () {
+        $snapshot = [
+            'attributes' => ['id' => 10, 'title' => 'Hydration Test'],
+            'relations' => [
+                'tags' => [
+                    'type' => 'pivot',
+                    'detached' => [52],
+                    'items' => [
+                        51 => [
+                            'attributes' => ['id' => 51, 'label' => 'A'],
+                            'pivot' => ['doc_id' => 10, 'tag_id' => 51, 'order' => 1],
+                        ],
+                        // If this id appears in both items and detached, detached must win.
+                        52 => [
+                            'attributes' => ['id' => 52, 'label' => 'B'],
+                            'pivot' => ['doc_id' => 10, 'tag_id' => 52, 'order' => 2],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $model = new MockModel(['id' => 10]);
+        $model->exists = true;
+        $model->setRelation('tags', new Collection([
+            new MockModel(['id' => 51, 'label' => 'Old A']),
+            new MockModel(['id' => 52, 'label' => 'Old B']),
+        ]));
+
+        $hydrated = resolver()->hydrateModelFromSnapshot($model, $snapshot, [
+            'hydrate_loaded_relations_only' => true,
+            'prune_missing_many_relations' => true,
+        ]);
+
+        expect($hydrated->tags->pluck('id')->all())->toBe([51])
+            ->and($hydrated->tags->first()->label)->toBe('A')
+            ->and($hydrated->tags->first()->pivot->order)->toBe(1)
+            ->and($hydrated->tags->firstWhere('id', 52))->toBeNull();
     });
 });

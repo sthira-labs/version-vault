@@ -5,6 +5,8 @@ namespace SthiraLabs\VersionVault\Services;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 
@@ -59,11 +61,18 @@ class SnapshotBuilder
      */
     protected function buildNode(Model $model, array $config): array
     {
+        $attributeConfig = $config['attributes'] ?? [];
+        $attributeConfig = $this->augmentAttributesForReferenceRelations(
+            $model,
+            $config['relations'] ?? [],
+            $attributeConfig
+        );
+
         $node = [
             '__meta' => $this->extractMeta($model),
             'attributes' => $this->extractAttributes(
                 $model,
-                $config['attributes'] ?? []
+                $attributeConfig
             ),
             'relations' => []
         ];
@@ -194,6 +203,10 @@ class SnapshotBuilder
         string $relationName, 
         array $relationConfig
     ): ?array {
+        if ($this->getRelationMode($relationConfig) === 'reference') {
+            return null;
+        }
+
         // Always reload relation to ensure fresh state from DB
         try {
             $model->load($relationName);
@@ -311,6 +324,64 @@ class SnapshotBuilder
             : [];
 
         return $this->normalizer->normalize($rawConfig);
+    }
+
+    protected function getRelationMode(array $relationConfig): string
+    {
+        $mode = $relationConfig['mode'] ?? null;
+        if (is_string($mode) && $mode !== '') {
+            return $mode;
+        }
+
+        $hasAttributes = !empty($relationConfig['attributes'] ?? []);
+        $hasRelations = !empty($relationConfig['relations'] ?? []);
+        $hasPivot = !empty($relationConfig['pivot'] ?? []);
+
+        return ($hasAttributes || $hasRelations || $hasPivot) ? 'snapshot' : 'reference';
+    }
+
+    protected function augmentAttributesForReferenceRelations(
+        Model $model,
+        array $relationsConfig,
+        array $attributeConfig
+    ): array {
+        if (in_array('*', $attributeConfig, true)) {
+            return $attributeConfig;
+        }
+
+        foreach ($relationsConfig as $relationName => $relationConfig) {
+            if ($this->getRelationMode($relationConfig) !== 'reference') {
+                continue;
+            }
+
+            if (!method_exists($model, $relationName)) {
+                continue;
+            }
+
+            try {
+                $relationInstance = $model->{$relationName}();
+            } catch (\Throwable $e) {
+                continue;
+            }
+
+            if ($relationInstance instanceof MorphTo) {
+                $fk = $relationInstance->getForeignKeyName() ?: "{$relationName}_id";
+                $type = $relationInstance->getMorphType() ?: "{$relationName}_type";
+                if (!in_array($fk, $attributeConfig, true)) {
+                    $attributeConfig[] = $fk;
+                }
+                if (!in_array($type, $attributeConfig, true)) {
+                    $attributeConfig[] = $type;
+                }
+            } elseif ($relationInstance instanceof BelongsTo) {
+                $fk = $relationInstance->getForeignKeyName();
+                if (!in_array($fk, $attributeConfig, true)) {
+                    $attributeConfig[] = $fk;
+                }
+            }
+        }
+
+        return $attributeConfig;
     }
 
     protected function mapAttributeValues(Model $model, array $attributes): array

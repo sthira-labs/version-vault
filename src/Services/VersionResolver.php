@@ -44,6 +44,10 @@ class VersionResolver
      */
     protected function applyDiff(array $snapshot, array $diff): array
     {
+        // Tombstones are version-local metadata and should not leak across
+        // later diffs that do not explicitly remove/detach relation items.
+        $snapshot = $this->clearRemovedItemTombstones($snapshot);
+
         // Handle full creation/deletion
         if (isset($diff['_created']) && $diff['_created']) {
             return $diff['_data'] ?? [];
@@ -145,10 +149,16 @@ class VersionResolver
     protected function applyCollectionDiff(array $relation, array $diff): array
     {
         $items = $relation['items'] ?? [];
+        $removedItems = [];
 
         // Remove items
         if (isset($diff['removed'])) {
             foreach ($diff['removed'] as $id) {
+                if (isset($diff['removed_data'][$id])) {
+                    $removedItems[$id] = $diff['removed_data'][$id];
+                } elseif (isset($items[$id])) {
+                    $removedItems[$id] = $items[$id];
+                }
                 unset($items[$id]);
             }
         }
@@ -157,6 +167,7 @@ class VersionResolver
         if (isset($diff['added']) && isset($diff['added_data'])) {
             foreach ($diff['added_data'] as $id => $itemData) {
                 $items[$id] = $itemData;
+                unset($removedItems[$id]);
             }
         }
 
@@ -169,10 +180,16 @@ class VersionResolver
             }
         }
 
-        return [
+        $result = [
             'type' => 'collection',
             'items' => $items
         ];
+
+        if (!empty($removedItems)) {
+            $result['_removed_items'] = $removedItems;
+        }
+
+        return $result;
     }
 
     /**
@@ -185,10 +202,16 @@ class VersionResolver
     protected function applyPivotDiff(array $relation, array $diff): array
     {
         $items = $relation['items'] ?? [];
+        $removedItems = [];
 
         // Detach items
         if (isset($diff['detached'])) {
             foreach ($diff['detached'] as $id) {
+                if (isset($diff['detached_data'][$id])) {
+                    $removedItems[$id] = $diff['detached_data'][$id];
+                } elseif (isset($items[$id])) {
+                    $removedItems[$id] = $items[$id];
+                }
                 unset($items[$id]);
             }
         }
@@ -197,6 +220,7 @@ class VersionResolver
         if (isset($diff['attached']) && isset($diff['attached_data'])) {
             foreach ($diff['attached_data'] as $id => $itemData) {
                 $items[$id] = $itemData;
+                unset($removedItems[$id]);
             }
         }
 
@@ -235,10 +259,16 @@ class VersionResolver
             }
         }
 
-        return [
+        $result = [
             'type' => 'pivot',
             'items' => $items
         ];
+
+        if (!empty($removedItems)) {
+            $result['_removed_items'] = $removedItems;
+        }
+
+        return $result;
     }
 
     /**
@@ -264,6 +294,8 @@ class VersionResolver
             'preserve_missing_attributes'   => true,
             'attach_unloaded_relations'     => false,
             'force_replace_relation'        => false,
+            'reconstruct_relations'         => null,
+            'prune_missing_many_relations'  => true,
         ], $options);
 
         // Create a fresh instance of the same class (do NOT use replicate on an existing persisted instance)
@@ -318,8 +350,13 @@ class VersionResolver
                 continue;
             }
 
+            $allowed = $opts['reconstruct_relations'];
+            if (is_array($allowed) && !in_array($relationName, $allowed, true)) {
+                continue;
+            }
+
             $isLoaded = $templateModel->relationLoaded($relationName);
-            if ($opts['hydrate_loaded_relations_only'] && !$isLoaded && !$opts['attach_unloaded_relations']) {
+            if ($opts['hydrate_loaded_relations_only'] && !$isLoaded && !$opts['attach_unloaded_relations'] && !is_array($allowed)) {
                 // Respect loaded-only behavior: skip hydration for unloaded relation
                 continue;
             }
@@ -338,7 +375,7 @@ class VersionResolver
 
             // If force_replace_relation or there is no current relation value, build new relation value
             if ($opts['force_replace_relation'] || $currentRelationValue === null) {
-                $newRelation = $this->buildRelationFromCanonical($relatedClass, $relationData);
+                $newRelation = $this->buildRelationFromCanonical($relatedClass, $relationData, $opts);
                 // setRelation marks relation as loaded on the hydrated instance
                 if ($newRelation !== null) {
                     $instance->setRelation($relationName, $newRelation);
@@ -366,7 +403,7 @@ class VersionResolver
                 $instance->setRelation($relationName, $updatedModel);
             } else {
                 // Unexpected type, fall back to building from canonical
-                $built = $this->buildRelationFromCanonical($relatedClass, $relationData);
+                $built = $this->buildRelationFromCanonical($relatedClass, $relationData, $opts);
                 if ($built !== null) {
                     $instance->setRelation($relationName, $built);
                 }
@@ -384,7 +421,7 @@ class VersionResolver
      * @param array|null $relationData
      * @return Model|\Illuminate\Database\Eloquent\Collection|null
      */
-    protected function buildRelationFromCanonical(string $relatedClass, ?array $relationData)
+    protected function buildRelationFromCanonical(string $relatedClass, ?array $relationData, array $opts = [])
     {
         if ($relationData === null) {
             return null;
@@ -400,6 +437,13 @@ class VersionResolver
             case 'collection':
             case 'pivot':
                 $items = $relationData['items'] ?? [];
+                if (
+                    ($opts['prune_missing_many_relations'] ?? true) === false
+                    && isset($relationData['_removed_items'])
+                    && is_array($relationData['_removed_items'])
+                ) {
+                    $items = array_replace($relationData['_removed_items'], $items);
+                }
                 // hydrateCollection will also attach pivot data to each item if present
                 return $this->hydrateCollection($relatedClass, $items);
 
@@ -578,7 +622,7 @@ class VersionResolver
             } else {
                 // If no current child and attach_unloaded_relations true, build and attach
                 if ($opts['attach_unloaded_relations']) {
-                    $built = $this->buildRelationFromCanonical($childClass, $relNode);
+                    $built = $this->buildRelationFromCanonical($childClass, $relNode, $opts);
                     if ($built !== null) {
                         $currentModel->setRelation($relName, $built);
                     }
@@ -607,6 +651,15 @@ class VersionResolver
         }
 
         $itemsNode = $relationData['items'] ?? $relationData;
+        $explicitRemovedIds = [];
+
+        if (isset($relationData['removed']) && is_array($relationData['removed'])) {
+            $explicitRemovedIds = array_merge($explicitRemovedIds, array_map('strval', $relationData['removed']));
+        }
+        if (isset($relationData['detached']) && is_array($relationData['detached'])) {
+            $explicitRemovedIds = array_merge($explicitRemovedIds, array_map('strval', $relationData['detached']));
+        }
+        $explicitRemovedIds = array_values(array_unique($explicitRemovedIds));
 
         // If itemsNode is associative keyed by id, we inspect keys
         // Build a map of existing items by primary key value for fast lookup
@@ -625,9 +678,9 @@ class VersionResolver
             $existingById[(string)$item->getAttribute($pkName)] = $item;
         }
 
-        // Handle explicit 'removed' list in relationData (if present)
-        if (isset($relationData['removed']) && is_array($relationData['removed'])) {
-            foreach ($relationData['removed'] as $rid) {
+        // Handle explicit 'removed'/'detached' list in relationData (if present)
+        if ($opts['prune_missing_many_relations'] && !empty($explicitRemovedIds)) {
+            foreach ($explicitRemovedIds as $rid) {
                 if (isset($existingById[(string)$rid])) {
                     // remove from collection (non-persistent)
                     $currentCollection = $currentCollection->reject(function ($it) use ($pkName, $rid) {
@@ -635,6 +688,86 @@ class VersionResolver
                     })->values();
                     unset($existingById[(string)$rid]);
                 }
+            }
+        }
+
+        // When pruning is disabled, keep explicitly removed/detached ids, but still
+        // discard unrelated stale ids that are not represented by source/target data.
+        if (
+            !$opts['prune_missing_many_relations']
+            && !empty($explicitRemovedIds)
+            && is_array($itemsNode)
+        ) {
+            $knownIds = array_values(array_unique(array_merge(
+                array_map('strval', array_keys($itemsNode)),
+                $explicitRemovedIds
+            )));
+
+            $currentCollection = $currentCollection->reject(function ($it) use ($pkName, $knownIds) {
+                return !in_array((string)$it->getAttribute($pkName), $knownIds, true);
+            })->values();
+
+            $existingById = [];
+            foreach ($currentCollection as $item) {
+                $existingById[(string)$item->getAttribute($pkName)] = $item;
+            }
+        }
+
+        // When pruning is disabled, rehydrate removed/detached items from canonical
+        // tombstones if they are not already present on the current loaded relation.
+        if (
+            !$opts['prune_missing_many_relations']
+            && isset($relationData['_removed_items'])
+            && is_array($relationData['_removed_items'])
+        ) {
+            foreach ($relationData['_removed_items'] as $removedId => $removedNode) {
+                $removedKey = (string)$removedId;
+                if (isset($existingById[$removedKey])) {
+                    continue;
+                }
+
+                $restored = $this->hydrateSingleModel($relatedClass, $removedNode);
+                if (isset($removedNode['pivot']) && is_array($removedNode['pivot'])) {
+                    $this->attachPivotToModel($restored, $removedNode['pivot']);
+                }
+
+                $currentCollection->push($restored);
+                $existingById[(string)$restored->getAttribute($pkName)] = $restored;
+            }
+        }
+
+        // Canonical snapshot nodes should fully describe the relation.
+        // Always sync loaded relations to target-version ids; when pruning is
+        // disabled we still include target tombstones (if any), but never keep
+        // unrelated latest-state leftovers.
+        $hasIncrementalOps = isset($relationData['added_data'])
+            || isset($relationData['attached_data'])
+            || isset($relationData['updated'])
+            || isset($relationData['removed'])
+            || isset($relationData['detached'])
+            || isset($relationData['added'])
+            || isset($relationData['attached']);
+
+        if (!$hasIncrementalOps && is_array($itemsNode)) {
+            $canonicalIds = array_map('strval', array_keys($itemsNode));
+            if (
+                !$opts['prune_missing_many_relations']
+                && isset($relationData['_removed_items'])
+                && is_array($relationData['_removed_items'])
+            ) {
+                $canonicalIds = array_values(array_unique(array_merge(
+                    $canonicalIds,
+                    array_map('strval', array_keys($relationData['_removed_items']))
+                )));
+            }
+
+            $currentCollection = $currentCollection->reject(function ($it) use ($pkName, $canonicalIds) {
+                return !in_array((string)$it->getAttribute($pkName), $canonicalIds, true);
+            })->values();
+
+            $existingById = [];
+            foreach ($currentCollection as $item) {
+                $existingById[(string)$item->getAttribute($pkName)] = $item;
             }
         }
 
@@ -668,6 +801,9 @@ class VersionResolver
                 }
 
                 $idKey = (string)$id;
+                if (in_array($idKey, $explicitRemovedIds, true)) {
+                    continue;
+                }
                 if (isset($existingById[$idKey])) {
                     $existing = $existingById[$idKey];
                     $attrs = $this->mergePrimaryKeyFromMeta($node);
@@ -702,7 +838,7 @@ class VersionResolver
                             $existing->setRelation($childRel, $updatedChildModel);
                         } else {
                             if ($opts['attach_unloaded_relations']) {
-                                $built = $this->buildRelationFromCanonical($childClass, $childNode);
+                                $built = $this->buildRelationFromCanonical($childClass, $childNode, $opts);
                                 if ($built !== null) {
                                     $existing->setRelation($childRel, $built);
                                 }
@@ -766,5 +902,36 @@ class VersionResolver
         }
         
         return $attributes;
+    }
+
+    protected function clearRemovedItemTombstones(array $node): array
+    {
+        if (!isset($node['relations']) || !is_array($node['relations'])) {
+            return $node;
+        }
+
+        foreach ($node['relations'] as $relationName => $relationNode) {
+            if (!is_array($relationNode)) {
+                continue;
+            }
+
+            unset($relationNode['_removed_items']);
+            $type = $relationNode['type'] ?? null;
+
+            if ($type === 'single' && isset($relationNode['data']) && is_array($relationNode['data'])) {
+                $relationNode['data'] = $this->clearRemovedItemTombstones($relationNode['data']);
+            } elseif (($type === 'collection' || $type === 'pivot') && isset($relationNode['items']) && is_array($relationNode['items'])) {
+                foreach ($relationNode['items'] as $id => $itemNode) {
+                    if (!is_array($itemNode)) {
+                        continue;
+                    }
+                    $relationNode['items'][$id] = $this->clearRemovedItemTombstones($itemNode);
+                }
+            }
+
+            $node['relations'][$relationName] = $relationNode;
+        }
+
+        return $node;
     }
 }

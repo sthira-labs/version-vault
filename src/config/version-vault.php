@@ -90,6 +90,13 @@ return [
         'force_replace_relation' => false,
         // Include diff + changed_paths when reconstructing versions
         'with_diff_paths' => false,
+        // Limit reconstruction to specific relations (null = default behavior)
+        'reconstruct_relations' => null,
+        // Controls loaded *Many pruning during reconstruction:
+        // true  => remove items missing from target version
+        // false => keep missing items, but still drop unrelated stale items when
+        //          explicit removed/detached ids are present in relation diffs
+        'prune_missing_many_relations' => true,
     ],
 
     /*

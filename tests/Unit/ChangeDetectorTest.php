@@ -42,6 +42,26 @@ dataset('diffAttributesCases', [
             'note' => ['from' => null, 'to' => 'Added note'],
         ],
     ],
+    'numeric strings and integers are treated as equivalent' => [
+        ['branch_id' => '1', 'language_id' => '2'],
+        ['branch_id' => 1, 'language_id' => 2],
+        [],
+    ],
+    'numeric normalization handles sign, decimals, and zero forms' => [
+        [
+            'a' => '+.500',
+            'b' => '-001.00',
+            'c' => '000',
+            'd' => '-0',
+        ],
+        [
+            'a' => '0.5',
+            'b' => -1,
+            'c' => 0,
+            'd' => 0,
+        ],
+        [],
+    ],
 ]);
 
 dataset('isEmptyDiffCases', [
@@ -93,7 +113,13 @@ dataset('buildChangedPathsCases', [
                 ],
             ],
         ],
-    ], ['comments.added', 'comments.removed', 'comments[101].text']],
+    ], [
+        'comments.added',
+        'comments.103.added',
+        'comments.removed',
+        'comments.102.removed',
+        'comments[101].text',
+    ]],
     'pivot ops + nested' => [[
         'relations' => [
             'tags' => [
@@ -124,7 +150,9 @@ dataset('buildChangedPathsCases', [
         ],
     ], [
         'tags.attached',
+        'tags.7.attached',
         'tags.detached',
+        'tags.6.detached',
         'tags[5].name',
         'tags[5].pivot.order',
         'tags[5].owner.username',
@@ -304,6 +332,7 @@ describe('ChangeDetector', function () {
                     'added' => [103],
                     'added_data' => [103 => $to['relations']['comments']['items'][103]],
                     'removed' => [102],
+                    'removed_data' => [102 => $from['relations']['comments']['items'][102]],
                     'updated' => [
                         101 => [
                             'attributes' => [
@@ -393,6 +422,7 @@ describe('ChangeDetector', function () {
                     'attached' => [7],
                     'attached_data' => [7 => $to['relations']['tags']['items'][7]],
                     'detached' => [6],
+                    'detached_data' => [6 => $from['relations']['tags']['items'][6]],
                     'updated' => [
                         5 => [
                             'attributes' => [
