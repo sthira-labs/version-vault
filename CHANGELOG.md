@@ -2,24 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
-and this project adheres to [Semantic Versioning](https://semver.org/).
-
-## [Unreleased]
-### Added
-- Initial package scaffold (service provider, trait stub, model & migration).
-- Composer package metadata and PSR-4 autoloading.
-- Basic config and migration files.
-
-### Changed
-- N/A
-
-### Fixed
-- N/A
+The format is based on Keep a Changelog
+and this project adheres to Semantic Versioning.
 
 ---
 
-## [0.1.0] - YYYY-MM-DD
+## [Unreleased]
 ### Added
-- Initial release: core concepts and storage schema for versioning.
-- `HasVersioning` trait (stub), `Version` model and a migration for versions table.
+- Ongoing improvements and upcoming features.
+
+---
+
+## [1.0.0] - 2026-03-17
+
+### Added
+- Initial stable release of Version Vault.
+- Core versioning infrastructure and storage schema.
+- `HasVersioning` trait for integrating version tracking into models.
+- `Version` model for managing version records.
+- Migration for versions table.
+- Configurable package setup.
+- Laravel service provider for seamless integration.
+
+### Notes
+- This is the first stable public release 🎉
+- Designed to be flexible and easily extendable for different versioning use cases.
+
+---
+
+[1.0.0]: https://github.com/sthira-labs/version-vault/releases/tag/v1.0.0
