@@ -11,6 +11,7 @@ use SthiraLabs\VersionVault\Services\ConfigNormalizer;
 use SthiraLabs\VersionVault\Services\SnapshotBuilder;
 use SthiraLabs\VersionVault\Tests\TestCase;
 
+
 uses(TestCase::class)->in('Feature', 'Unit');
 
 /*
@@ -87,11 +88,6 @@ function ensureVersionsTable(): void
 function changeDetector(): ChangeDetector
 {
     return new ChangeDetector();
-}
-
-function changeDetectorProxy(): ChangeDetectorTestProxy
-{
-    return new ChangeDetectorTestProxy();
 }
 
 function snapshotBuilder(): SnapshotBuilder
