@@ -61,35 +61,38 @@ trait HasVersioning
 
     /**
      * Record a version unconditionally.
+     *
+     * Pass $createdBy to override Auth::id() — useful from queue jobs or
+     * system actors where the request-time user is not available.
      */
-    public function recordVersion(?string $action = null, array $meta = []): Version
+    public function recordVersion(?string $action = null, array $meta = [], ?int $createdBy = null): Version
     {
         $this->ensureVersionable();
 
         return $this->versionManager()
-            ->recordVersion($this, $action, $meta);
+            ->recordVersion($this, $action, $meta, false, $createdBy);
     }
 
     /**
      * Record a version only if changes are detected.
      */
-    public function recordVersionIfChanged(?string $action = null, array $meta = []): ?Version
+    public function recordVersionIfChanged(?string $action = null, array $meta = [], ?int $createdBy = null): ?Version
     {
         $this->ensureVersionable();
 
         return $this->versionManager()
-            ->recordVersionIfChanged($this, $action, $meta);
+            ->recordVersionIfChanged($this, $action, $meta, false, $createdBy);
     }
 
     /**
      * Force a snapshot-based version.
      */
-    public function forceSnapshot(): Version
+    public function forceSnapshot(?int $createdBy = null): Version
     {
         $this->ensureVersionable();
 
         return $this->versionManager()
-            ->forceSnapshot($this);
+            ->forceSnapshot($this, $createdBy);
     }
 
     /**

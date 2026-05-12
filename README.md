@@ -11,8 +11,8 @@ VersionVault is a Laravel package for model versioning that is diff-first, snaps
 - Morph map friendly (stores morph alias when configured)
 
 ## Requirements
-- PHP 8.2+
-- Laravel 11+ (tested with Laravel 12)
+- PHP 8.1+
+- Laravel 9+ (tested against Laravel 11 and 12 via orchestra/testbench)
 
 ## Installation
 ```bash
@@ -176,8 +176,13 @@ Default relation tracking is now `reference` mode to avoid creating versions whe
 If you rely on deep relation snapshots, configure the relation with fields (implicit snapshot) or set `mode: snapshot`.
 
 ## Version Records (created_by)
-If an authenticated user exists, `created_by` is recorded on each version.  
-The `Version` model exposes a `user()` relation that resolves via `version-vault.user_model` or falls back to `auth.providers.users.model`.
+If an authenticated user exists, `created_by` is recorded on each version. You can also pass an explicit user id as the third argument to `recordVersion`, `recordVersionIfChanged`, or `forceSnapshot` — useful from queue jobs or system actors where `Auth::id()` is not available.
+
+```php
+$project->recordVersion('updated', [], $actorId);
+```
+
+The `Version` model exposes a `createdBy()` relation that resolves via `version-vault.user_model` or falls back to `auth.providers.users.model`.
 
 ## Snapshot & Diff Format
 See `docs/NEW_NODE_FORMAT.md` for the exact snapshot/diff schema and examples.

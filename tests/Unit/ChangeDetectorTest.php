@@ -218,7 +218,7 @@ describe('ChangeDetector', function () {
     // --- Attribute Diffing ---
     
     test('diffAttributes captures changes', function (array $from, array $to, array $expected) {
-        $diff = changeDetectorProxy()->callDiffAttributes($from, $to);
+        $diff = (new ChangeDetectorTestProxy())->callDiffAttributes($from, $to);
         expect($diff)->toEqual($expected);
     })->with('diffAttributesCases');
     

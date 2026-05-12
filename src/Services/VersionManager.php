@@ -49,6 +49,7 @@ class VersionManager
         ?string $action = null,
         array $meta = [],
         bool $forceSnapshot = false,
+        ?int $createdBy = null,
     ): ?Version {
         $config = $this->configNormalizer->normalize(
             method_exists($model, 'versioningConfig') ? $model->versioningConfig() : []
@@ -82,7 +83,8 @@ class VersionManager
                 ? $currentSnapshot
                 : null,
             action: $action,
-            meta: $meta
+            meta: $meta,
+            createdBy: $createdBy,
         );
 
         $this->debug('recordVersionIfChanged.persisted', [
@@ -105,6 +107,7 @@ class VersionManager
         ?string $action = null,
         array $meta = [],
         bool $forceSnapshot = false,
+        ?int $createdBy = null,
     ): Version {
         $config = $this->configNormalizer->normalize(
             method_exists($model, 'versioningConfig') ? $model->versioningConfig() : []
@@ -124,7 +127,8 @@ class VersionManager
                 ? $currentSnapshot
                 : null,
             action: $action,
-            meta: $meta
+            meta: $meta,
+            createdBy: $createdBy,
         );
 
         $this->debug('recordVersion.persisted', [
@@ -142,9 +146,9 @@ class VersionManager
     /**
      * Force a snapshot-based version.
      */
-    public function forceSnapshot(Model $model): Version
+    public function forceSnapshot(Model $model, ?int $createdBy = null): Version
     {
-        return $this->recordVersion($model, 'forced-snapshot', [], true);
+        return $this->recordVersion($model, 'forced-snapshot', [], true, $createdBy);
     }
 
     /**
@@ -161,23 +165,7 @@ class VersionManager
             'version' => $version,
         ]);
 
-        $row = $model->versions()->where('version', '<=', $version)->orderBy('version')->get();
-
-        $baseSnapshot = null;
-        $diffs = [];
-
-        foreach ($row as $ver) {
-            if ($ver->snapshot !== null) {
-                $baseSnapshot = $ver->snapshot;
-                $diffs = [];
-                continue;
-            }
-            if ($ver->version <= $version) {
-                $diffs[] = $ver->diff;
-            }
-        }
-
-        $state = $this->versionResolver->applyDiffsToSnapshot($baseSnapshot, $diffs);
+        $state = $this->reconstructCanonicalUpTo($model, $version);
 
         $hydrateOptions = array_merge(
             config('version-vault.reconstruct', [
@@ -357,33 +345,46 @@ class VersionManager
         Model $model,
         int $upToVersion
     ): array {
-        // 1. Nearest snapshot ≤ target version
+        // Nearest snapshot ≤ target version
         $baseVersion = $model->versions()
             ->whereNotNull('snapshot')
             ->where('version', '<=', $upToVersion)
             ->orderByDesc('version')
             ->first();
 
-        if (! $baseVersion) {
-            throw new RuntimeException(
-                "No snapshot found for version ≤ {$upToVersion}"
+        if ($baseVersion) {
+            $diffs = $model->versions()
+                ->where('version', '>', $baseVersion->version)
+                ->where('version', '<=', $upToVersion)
+                ->whereNull('snapshot')
+                ->orderBy('version')
+                ->pluck('diff')
+                ->all();
+
+            return $this->versionResolver->applyDiffsToSnapshot(
+                $baseVersion->snapshot,
+                $diffs
             );
         }
 
-        // 2. Diffs after snapshot up to target
+        // No snapshot in [1, $upToVersion] — supports snapshot_interval=0 by
+        // replaying the full diff timeline. The first diff carries a _created
+        // marker with the full state, so applyDiffsToSnapshot can rebuild from
+        // null. If no rows exist at all, the caller is asking for state that
+        // was never recorded — surface that explicitly.
         $diffs = $model->versions()
-            ->where('version', '>', $baseVersion->version)
             ->where('version', '<=', $upToVersion)
-            ->whereNull('snapshot')
             ->orderBy('version')
             ->pluck('diff')
             ->all();
 
-        // 3. Apply diffs
-        return $this->versionResolver->applyDiffsToSnapshot(
-            $baseVersion->snapshot,
-            $diffs
-        );
+        if (empty($diffs)) {
+            throw new RuntimeException(
+                "No versions found for version ≤ {$upToVersion}"
+            );
+        }
+
+        return $this->versionResolver->applyDiffsToSnapshot(null, $diffs);
     }
 
     /**
@@ -395,11 +396,12 @@ class VersionManager
         array $changedPaths,
         ?array $snapshot,
         ?string $action,
-        array $meta
+        array $meta,
+        ?int $createdBy = null,
     ): Version {
         event(new VersionRecording($model, $diff, $snapshot, $action, $meta));
 
-        return DB::transaction(function () use ($model, $diff, $changedPaths, $snapshot, $action, $meta) {
+        return DB::transaction(function () use ($model, $diff, $changedPaths, $snapshot, $action, $meta, $createdBy) {
             $version = new Version();
             $version->versionable_type = Relation::getMorphAlias($model::class);
             $version->versionable_id = $model->getKey();
@@ -409,7 +411,7 @@ class VersionManager
             $version->changed_paths = $changedPaths;
             $version->action = $action;
             $version->meta = $meta;
-            $version->created_by = Auth::id();
+            $version->created_by = $createdBy ?? Auth::id();
 
             $version->save();
 

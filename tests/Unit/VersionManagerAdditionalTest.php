@@ -104,7 +104,7 @@ it('compares versions when snapshots exist', function () {
         ->and($comparison['changed_paths'])->toContain('name');
 });
 
-it('throws when no snapshot exists for comparison', function () {
+it('compareVersions works under snapshot_interval=0 by replaying diffs from v1', function () {
     config(['version-vault.snapshot_interval' => 0]);
 
     $project = VmProject::create(['name' => 'X']);
@@ -122,7 +122,39 @@ it('throws when no snapshot exists for comparison', function () {
     $version->meta = [];
     $version->save();
 
-    expect(fn () => $project->compareVersions(1, 2))
+    $comparison = $project->compareVersions(1, 2);
+
+    expect($comparison['diff']['attributes']['name']['to'])->toBe('Y')
+        ->and($comparison['changed_paths'])->toContain('name');
+});
+
+it('reconstructVersion works under snapshot_interval=0 by replaying diffs from v1', function () {
+    config(['version-vault.snapshot_interval' => 0]);
+
+    $project = VmProject::create(['name' => 'X']);
+    $project->recordVersion('v1');
+
+    $version = Version::where('versionable_id', $project->id)
+        ->where('version', 1)
+        ->first();
+    expect($version->snapshot)->toBeNull();
+
+    $project->update(['name' => 'Y']);
+    $project->recordVersionIfChanged('v2');
+
+    $reconstructed = $project->fresh()->reconstructVersion(1);
+    expect($reconstructed->model->name)->toBe('X');
+
+    $reconstructed2 = $project->fresh()->reconstructVersion(2);
+    expect($reconstructed2->model->name)->toBe('Y');
+});
+
+it('reconstructVersion throws when no versions exist at or below target', function () {
+    config(['version-vault.snapshot_interval' => 10]);
+
+    $project = VmProject::create(['name' => 'Empty']);
+
+    expect(fn () => $project->reconstructVersion(1))
         ->toThrow(RuntimeException::class);
 });
 
